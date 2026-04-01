@@ -1,0 +1,17 @@
+student 1 token -->
+{
+  "message": "Registered successfully",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNuIjoiMU1TMjRDUzAwMSIsInJvbGUiOiJzdHVkZW50IiwiaWF0IjoxNzc0OTU0MDEwLCJleHAiOjE3NzU1NTg4MTB9.a2UC6amAhSXtfK5MykyvJBO4BoOJqVX0vTjPSJh_PHI"
+}
+
+student 2-->
+{
+  "message": "Registered successfully",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwidXNuIjoiMU1TMjRDUzAwMiIsInJvbGUiOiJzdHVkZW50IiwiaWF0IjoxNzc0OTU1NjE2LCJleHAiOjE3NzU1NjA0MTZ9._3rY7uWQ7b3wduZUKu-htE7XWHiKw7j75q7_CNcYMnw"
+}
+
+admin token -->
+{
+  "message": "Admin login successful",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc3NDk1NDMxOCwiZXhwIjoxNzc1NTU5MTE4fQ.cG66-Euu266V-qGxex2lK4vwV0t2jCIDgF58RXE3tIc"
+}
