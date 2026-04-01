@@ -77,7 +77,7 @@ exports.deleteRoom = async (req, res) => {
 
 exports.getAllStudents = async (req, res) => {
   const [students] = await pool.query(
-    'SELECT id, usn, email, cgpa, status FROM students ORDER BY cgpa DESC'
+    'SELECT id, name, usn, email, cgpa, status FROM students ORDER BY cgpa DESC'
   );
   res.json(students);
 };
@@ -89,7 +89,7 @@ exports.getAllAllotments = async (req, res) => {
 
   const [data] = await pool.query(
     `SELECT a.id, a.round, a.allotted_at, a.is_on_hold,
-            s.usn, s.cgpa,
+            s.name, s.usn, s.cgpa,
             r.block, r.room_number, r.type
      FROM allotments a
      JOIN students s ON a.student_id = s.id

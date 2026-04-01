@@ -11,10 +11,13 @@ const generateToken = (payload) => {
 
 // Student register
 exports.register = async (req, res) => {
-  const { usn, email, password } = req.body;
+  const { name, usn, email, password } = req.body;
 
-  if (!usn || !email || !password)
-    return res.status(400).json({ message: 'USN, email and password are required' });
+  // ✅ include name validation
+  if (!name || !usn || !email || !password)
+    return res.status(400).json({
+      message: 'Name, USN, email and password are required'
+    });
 
   try {
     const [existing] = await pool.query(
@@ -23,24 +26,35 @@ exports.register = async (req, res) => {
     );
 
     if (existing.length > 0)
-      return res.status(409).json({ message: 'USN or email already registered' });
+      return res.status(409).json({
+        message: 'USN or email already registered'
+      });
 
     const password_hash = await bcrypt.hash(password, 10);
 
+    // ✅ FIXED INSERT (added name)
     const [result] = await pool.query(
-      'INSERT INTO students (usn, email, password_hash) VALUES (?, ?, ?)',
-      [usn, email, password_hash]
+      'INSERT INTO students (name, usn, email, password_hash) VALUES (?, ?, ?, ?)',
+      [name, usn, email, password_hash]
     );
 
     const token = generateToken({
-      id:   result.insertId,
+      id: result.insertId,
       usn,
       role: 'student',
     });
 
-    res.status(201).json({ message: 'Registered successfully', token });
+    res.status(201).json({
+      message: 'Registered successfully',
+      token
+    });
+
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    console.error(err); // 🔥 helpful debug
+    res.status(500).json({
+      message: 'Server error',
+      error: err.message
+    });
   }
 };
 

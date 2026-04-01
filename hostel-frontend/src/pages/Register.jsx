@@ -3,8 +3,14 @@ import { useNavigate, Link } from 'react-router-dom'
 import API from '../api/axios'
 
 export default function Register() {
-  const [form, setForm]       = useState({ usn: '', email: '', password: '' })
-  const [error, setError]     = useState('')
+  const [form, setForm] = useState({
+    name: '',        // 🔥 NEW
+    usn: '',
+    email: '',
+    password: ''
+  })
+
+  const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -55,6 +61,23 @@ export default function Register() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+
+          {/* 🔥 NAME FIELD */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Name
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              placeholder="Enter your full name"
+              required
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               USN

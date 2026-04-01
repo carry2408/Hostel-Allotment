@@ -24,12 +24,12 @@ exports.upload = multer({ storage });
 /* ================= PROFILE ================= */
 
 exports.updateProfile = async (req, res) => {
-  const { cgpa } = req.body;
+  const { cgpa, name } = req.body;
   const student_id = req.user.id;
   const doc_url = req.file ? `/uploads/${req.file.filename}` : null;
 
-  if (!cgpa)
-    return res.status(400).json({ message: 'CGPA is required' });
+  if (!cgpa || !name)
+    return res.status(400).json({ message: 'Name and CGPA required' });
 
   if (cgpa < 0 || cgpa > 10)
     return res.status(400).json({ message: 'Invalid CGPA' });
@@ -44,10 +44,13 @@ exports.updateProfile = async (req, res) => {
   if (locked.length && locked[0].is_locked)
     return res.status(403).json({ message: 'Application locked' });
 
-  const fields = doc_url ? 'cgpa=?, doc_url=?' : 'cgpa=?';
+  const fields = doc_url
+    ? 'name=?, cgpa=?, doc_url=?'
+    : 'name=?, cgpa=?';
+
   const values = doc_url
-    ? [cgpa, doc_url, student_id]
-    : [cgpa, student_id];
+    ? [name, cgpa, doc_url, student_id]
+    : [name, cgpa, student_id];
 
   await pool.query(
     `UPDATE students SET ${fields} WHERE id=?`,
@@ -59,7 +62,7 @@ exports.updateProfile = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
   const [rows] = await pool.query(
-    'SELECT id, usn, email, cgpa, doc_url, status FROM students WHERE id=?',
+    'SELECT id, name, usn, email, cgpa, doc_url, status FROM students WHERE id=?',
     [req.user.id]
   );
 
@@ -151,9 +154,10 @@ exports.getAllotment = async (req, res) => {
   const currentYear = await getCurrentYear();
 
   const [rows] = await pool.query(
-    `SELECT a.*, r.block, r.room_number, r.type 
+    `SELECT a.*, s.name, r.block, r.room_number, r.type 
      FROM allotments a 
      JOIN rooms r ON a.room_id = r.id 
+     JOIN students s ON a.student_id = s.id
      WHERE a.student_id=? AND a.year=?`,
     [req.user.id, currentYear]
   );
@@ -167,9 +171,7 @@ exports.getAllotment = async (req, res) => {
 /* ================= ROOMS ================= */
 
 exports.getAllRoomsForPreferences = async (req, res) => {
-  const [rooms] = await pool.query(
-    'SELECT * FROM rooms'
-  );
+  const [rooms] = await pool.query('SELECT * FROM rooms');
   res.json(rooms);
 };
 
@@ -188,167 +190,7 @@ exports.getAvailableRooms = async (req, res) => {
   res.json(rooms);
 };
 
-/* ================= HOLD ================= */
-
-exports.holdRoom = async (req, res) => {
-  const student_id = req.user.id;
-  const currentYear = await getCurrentYear();
-
-  await pool.query(
-    'UPDATE allotments SET is_on_hold=true WHERE student_id=? AND year=?',
-    [student_id, currentYear]
-  );
-
-  res.json({ message: 'Room on hold' });
-};
-
-/* ================= UPGRADE ================= */
-
-exports.upgradeRoom = async (req, res) => {
-  const { room_id } = req.body;
-  const student_id = req.user.id;
-
-  const conn = await pool.getConnection();
-
-  try {
-    await conn.beginTransaction();
-
-    const currentYear = await getCurrentYear(conn);
-
-    const [[allotment]] = await conn.query(
-      'SELECT * FROM allotments WHERE student_id=? AND year=?',
-      [student_id, currentYear]
-    );
-
-const [prefs] = await conn.query(
-  `SELECT room_id FROM preferences 
-   WHERE application_id = (
-     SELECT id FROM applications 
-     WHERE student_id=? AND year=?
-   )
-   AND year=?
-   ORDER BY priority ASC`,
-  [student_id, currentYear, currentYear]
-);
-
-    const prefList = prefs.map(p => p.room_id);
-
-    const currentIndex = prefList.indexOf(allotment.room_id);
-    const newIndex = prefList.indexOf(room_id);
-
-    if (newIndex === -1 || newIndex >= currentIndex)
-      throw new Error('Only better preference allowed');
-
-    const [[room]] = await conn.query(
-      `SELECT * FROM rooms WHERE id=? AND current_occupancy < capacity FOR UPDATE`,
-      [room_id]
-    );
-
-    if (!room)
-      throw new Error('Room not available');
-
-    await conn.query(
-      'UPDATE rooms SET current_occupancy = current_occupancy - 1 WHERE id=?',
-      [allotment.room_id]
-    );
-
-    await conn.query(
-      'UPDATE rooms SET current_occupancy = current_occupancy + 1 WHERE id=?',
-      [room_id]
-    );
-
-    await conn.query(
-      'UPDATE allotments SET room_id=?, round="round2", is_on_hold=false WHERE student_id=? AND year=?',
-      [room_id, student_id, currentYear]
-    );
-
-    await conn.commit();
-    res.json({ message: 'Upgraded successfully' });
-
-  } catch (err) {
-    await conn.rollback();
-    res.status(400).json({ message: err.message });
-  } finally {
-    conn.release();
-  }
-};
-
 /* ================= SWAP ================= */
-
-exports.requestSwap = async (req, res) => {
-  const { target_usn } = req.body;
-  const requester_id = req.user.id;
-
-  const currentYear = await getCurrentYear();
-
-  const [[target]] = await pool.query(
-    'SELECT id FROM students WHERE usn=?',
-    [target_usn]
-  );
-
-  const [[r1]] = await pool.query(
-    'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
-    [requester_id, currentYear]
-  );
-
-  const [[r2]] = await pool.query(
-    'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
-    [target.id, currentYear]
-  );
-
-  await pool.query(
-    `INSERT INTO swap_requests (requester_id,target_id,requester_room_id,target_room_id,year)
-     VALUES (?,?,?,?,?)`,
-    [requester_id, target.id, r1.room_id, r2.room_id, currentYear]
-  );
-
-  res.json({ message: 'Swap requested' });
-};
-
-exports.respondSwap = async (req, res) => {
-  const { action } = req.body;
-  const id = req.params.id;
-
-  const currentYear = await getCurrentYear();
-
-  const [[swap]] = await pool.query(
-    'SELECT * FROM swap_requests WHERE id=? AND status="pending" AND year=?',
-    [id, currentYear]
-  );
-
-  if (!swap)
-    return res.status(404).json({ message: 'Not found' });
-
-  const conn = await pool.getConnection();
-
-  try {
-    await conn.beginTransaction();
-
-    await conn.query(
-      'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
-      [swap.target_room_id, swap.requester_id, currentYear]
-    );
-
-    await conn.query(
-      'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
-      [swap.requester_room_id, swap.target_id, currentYear]
-    );
-
-    await conn.query(
-      'UPDATE swap_requests SET status=? WHERE id=?',
-      [action, id]
-    );
-
-    await conn.commit();
-    res.json({ message: 'Swap processed' });
-
-  } catch {
-    await conn.rollback();
-    res.status(500).json({ message: 'Swap failed' });
-  } finally {
-    conn.release();
-  }
-};
 
 exports.getSwapRequests = async (req, res) => {
   const student_id = req.user.id;
@@ -357,6 +199,7 @@ exports.getSwapRequests = async (req, res) => {
   const [rows] = await pool.query(
     `SELECT 
         sr.id,
+        s.name AS requester_name,
         s.usn AS requester_usn,
         r1.block AS requester_block,
         r1.room_number AS requester_room,
@@ -373,9 +216,53 @@ exports.getSwapRequests = async (req, res) => {
   res.json(rows);
 };
 
-exports.confirmAllotment = async (req, res) => {
+/* ================= CONFIRM ================= */
+
+
+
+/* ================= ROOMS ================= */
+
+exports.getAllRoomsForPreferences = async (req, res) => {
+  const [rooms] = await pool.query('SELECT * FROM rooms');
+  res.json(rooms);
+};
+
+/* ================= SWAP REQUESTS ================= */
+
+exports.getSwapRequests = async (req, res) => {
   const student_id = req.user.id;
   const currentYear = await getCurrentYear();
+
+  const [rows] = await pool.query(
+    `SELECT 
+        sr.id,
+        s.name AS requester_name,
+        s.usn AS requester_usn,
+        r1.block AS requester_block,
+        r1.room_number AS requester_room,
+        r2.block AS your_block,
+        r2.room_number AS your_room
+     FROM swap_requests sr
+     JOIN students s ON sr.requester_id = s.id
+     JOIN rooms r1 ON sr.requester_room_id = r1.id
+     JOIN rooms r2 ON sr.target_room_id = r2.id
+     WHERE sr.target_id=? AND sr.status='pending' AND sr.year=?`,
+    [student_id, currentYear]
+  );
+
+  res.json(rows);
+};
+
+/* ================= CONFIRM ================= */
+
+exports.confirmAllotment = async (req, res) => {
+  const student_id = req.user.id;
+
+  const [rows] = await pool.query(
+    'SELECT setting_value FROM system_settings WHERE setting_key="current_year"'
+  );
+
+  const currentYear = rows[0].setting_value;
 
   await pool.query(
     `UPDATE allotments 
@@ -385,4 +272,148 @@ exports.confirmAllotment = async (req, res) => {
   );
 
   res.json({ message: 'Allotment confirmed' });
+};
+
+/* ================= HOLD ================= */
+
+exports.holdRoom = async (req, res) => {
+  const student_id = req.user.id;
+  const currentYear = await getCurrentYear();
+
+  const [rows] = await pool.query(
+    'SELECT * FROM allotments WHERE student_id=? AND year=?',
+    [student_id, currentYear]
+  );
+
+  if (!rows.length)
+    return res.status(404).json({ message: 'No allotment found' });
+
+  await pool.query(
+    `UPDATE allotments 
+     SET is_on_hold=true 
+     WHERE student_id=? AND year=?`,
+    [student_id, currentYear]
+  );
+
+  res.json({ message: 'Room put on hold' });
+};
+
+/* ================= UPGRADE ================= */
+
+exports.upgradeRoom = async (req, res) => {
+  const { room_id } = req.body;
+  const student_id = req.user.id;
+  const currentYear = await getCurrentYear();
+
+  if (!room_id)
+    return res.status(400).json({ message: 'Room ID required' });
+
+  const [rows] = await pool.query(
+    'SELECT * FROM allotments WHERE student_id=? AND year=?',
+    [student_id, currentYear]
+  );
+
+  if (!rows.length)
+    return res.status(404).json({ message: 'No allotment found' });
+
+  await pool.query(
+    `UPDATE allotments 
+     SET room_id=?, round='round2', is_on_hold=true
+     WHERE student_id=? AND year=?`,
+    [room_id, student_id, currentYear]
+  );
+
+  res.json({ message: 'Room upgraded' });
+};
+
+/* ================= REQUEST SWAP ================= */
+
+exports.requestSwap = async (req, res) => {
+  const { target_usn } = req.body;
+  const requester_id = req.user.id;
+  const currentYear = await getCurrentYear();
+
+  if (!target_usn)
+    return res.status(400).json({ message: 'Target USN required' });
+
+  const [[target]] = await pool.query(
+    'SELECT id FROM students WHERE usn=?',
+    [target_usn]
+  );
+
+  if (!target)
+    return res.status(404).json({ message: 'Target student not found' });
+
+  const [[r1]] = await pool.query(
+    'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
+    [requester_id, currentYear]
+  );
+
+  const [[r2]] = await pool.query(
+    'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
+    [target.id, currentYear]
+  );
+
+  if (!r1 || !r2)
+    return res.status(400).json({ message: 'Both students must have allotment' });
+
+  await pool.query(
+    `INSERT INTO swap_requests 
+     (requester_id, target_id, requester_room_id, target_room_id, year)
+     VALUES (?, ?, ?, ?, ?)`,
+    [requester_id, target.id, r1.room_id, r2.room_id, currentYear]
+  );
+
+  res.json({ message: 'Swap request sent' });
+};
+
+/* ================= RESPOND SWAP ================= */
+
+exports.respondSwap = async (req, res) => {
+  const { action } = req.body;
+  const id = req.params.id;
+  const currentYear = await getCurrentYear();
+
+  if (!['accepted', 'rejected'].includes(action))
+    return res.status(400).json({ message: 'Invalid action' });
+
+  const [[swap]] = await pool.query(
+    'SELECT * FROM swap_requests WHERE id=? AND status="pending" AND year=?',
+    [id, currentYear]
+  );
+
+  if (!swap)
+    return res.status(404).json({ message: 'Request not found' });
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    if (action === 'accepted') {
+      await conn.query(
+        'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
+        [swap.target_room_id, swap.requester_id, currentYear]
+      );
+
+      await conn.query(
+        'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
+        [swap.requester_room_id, swap.target_id, currentYear]
+      );
+    }
+
+    await conn.query(
+      'UPDATE swap_requests SET status=? WHERE id=?',
+      [action, id]
+    );
+
+    await conn.commit();
+    res.json({ message: `Swap ${action}` });
+
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ message: 'Swap failed' });
+  } finally {
+    conn.release();
+  }
 };

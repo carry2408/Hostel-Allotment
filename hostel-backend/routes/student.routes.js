@@ -1,33 +1,41 @@
-const router  = require('express').Router();
-const auth    = require('../middleware/auth');
-const {
-  upload,
-  updateProfile,
-  getProfile,
-  submitPreferences,
-  getAllotment,
-  getAvailableRooms,
-  holdRoom,
-  upgradeRoom,
-  requestSwap,
-  respondSwap,
-  getAllRoomsForPreferences,
-  getSwapRequests,
-  confirmAllotment,
-} = require('../controllers/student.controller');
+const router = require('express').Router();
+const auth = require('../middleware/auth');
 
-router.post('/profile',           auth, upload.single('document'), updateProfile);
-router.get('/profile',            auth, getProfile);
-router.post('/preferences',       auth, submitPreferences);
-router.put('/preferences',        auth, submitPreferences);
-router.get('/allotment',          auth, getAllotment);
-router.get('/rooms/available',    auth, getAvailableRooms);
-router.post('/allotment/hold',    auth, holdRoom);
-router.post('/allotment/upgrade', auth, upgradeRoom);
-router.post('/swap/request',      auth, requestSwap);
-router.put('/swap/:id/respond',   auth, respondSwap);
-router.get('/rooms', auth, getAllRoomsForPreferences);
-router.get('/swap/requests', auth, getSwapRequests);
-router.post('/allotment/confirm', auth, confirmAllotment);
+// ✅ import full controller (NO destructuring)
+const studentController = require('../controllers/student.controller');
+
+/* ================= PROFILE ================= */
+
+router.post(
+  '/profile',
+  auth,
+  studentController.upload.single('document'),
+  studentController.updateProfile
+);
+
+router.get('/profile', auth, studentController.getProfile);
+
+/* ================= PREFERENCES ================= */
+
+router.post('/preferences', auth, studentController.submitPreferences);
+router.put('/preferences', auth, studentController.submitPreferences);
+
+/* ================= ALLOTMENT ================= */
+
+router.get('/allotment', auth, studentController.getAllotment);
+router.post('/allotment/hold', auth, studentController.holdRoom);
+router.post('/allotment/upgrade', auth, studentController.upgradeRoom);
+router.post('/allotment/confirm', auth, studentController.confirmAllotment);
+
+/* ================= ROOMS ================= */
+
+router.get('/rooms', auth, studentController.getAllRoomsForPreferences);
+router.get('/rooms/available', auth, studentController.getAvailableRooms);
+
+/* ================= SWAP ================= */
+
+router.post('/swap/request', auth, studentController.requestSwap);
+router.put('/swap/:id/respond', auth, studentController.respondSwap);
+router.get('/swap/requests', auth, studentController.getSwapRequests);
 
 module.exports = router;

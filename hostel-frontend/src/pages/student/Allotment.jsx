@@ -20,7 +20,6 @@ export default function Allotment() {
     fetchAllotment()
   }, [])
 
-  // 🔥 HOLD
   const handleHold = async () => {
     try {
       await API.post('/student/allotment/hold')
@@ -31,12 +30,10 @@ export default function Allotment() {
     }
   }
 
-  // 🔥 UPGRADE (FIXED)
   const handleUpgrade = async () => {
     try {
       setLoading(true)
 
-      // 🔥 get available rooms first
       const res = await API.get('/student/rooms/available')
 
       if (!res.data.length) {
@@ -44,7 +41,6 @@ export default function Allotment() {
         return
       }
 
-      // pick first available (best option)
       const betterRoom = res.data[0]
 
       await API.post('/student/allotment/upgrade', {
@@ -61,7 +57,6 @@ export default function Allotment() {
     }
   }
 
-  // 🔥 CONFIRM
   const handleConfirm = async () => {
     try {
       await API.post('/student/allotment/confirm')
@@ -70,6 +65,12 @@ export default function Allotment() {
     } catch (err) {
       setMessage(err.response?.data?.message || 'Error confirming')
     }
+  }
+
+  const getStatusStyle = (isOnHold) => {
+    return isOnHold
+      ? 'bg-yellow-100 text-yellow-700'
+      : 'bg-green-100 text-green-700'
   }
 
   if (!data) {
@@ -95,20 +96,27 @@ export default function Allotment() {
             Your Allotment
           </h2>
 
+          {/* 🔥 NAME */}
+          <p className="text-lg font-medium text-gray-800">
+            {data.name}
+          </p>
+
           <div className="space-y-1">
             <p><strong>Room:</strong> {data.block}-{data.room_number}</p>
             <p><strong>Type:</strong> {data.type}</p>
             <p><strong>Round:</strong> {data.round}</p>
+
             <p>
               <strong>Status:</strong>{' '}
-              {data.is_on_hold ? 'On Hold' : 'Confirmed'}
+              <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusStyle(data.is_on_hold)}`}>
+                {data.is_on_hold ? 'On Hold' : 'Confirmed'}
+              </span>
             </p>
           </div>
 
-          {/* 🔥 ACTIONS */}
+          {/* ACTIONS */}
           <div className="flex flex-col gap-3">
 
-            {/* HOLD */}
             <button
               onClick={handleHold}
               disabled={!data.is_on_hold && data.round === 'round2'}
@@ -117,7 +125,6 @@ export default function Allotment() {
               Put on Hold
             </button>
 
-            {/* UPGRADE */}
             <button
               onClick={handleUpgrade}
               disabled={!data.is_on_hold || loading}
@@ -126,7 +133,6 @@ export default function Allotment() {
               {loading ? 'Upgrading...' : 'Upgrade'}
             </button>
 
-            {/* CONFIRM */}
             <button
               onClick={handleConfirm}
               disabled={!data.is_on_hold}
@@ -137,7 +143,6 @@ export default function Allotment() {
 
           </div>
 
-          {/* MESSAGE */}
           {message && (
             <p className="text-sm text-blue-600 text-center">
               {message}

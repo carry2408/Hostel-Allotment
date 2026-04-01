@@ -7,7 +7,6 @@ export default function Swap() {
   const [message, setMessage] = useState('')
   const [requests, setRequests] = useState([])
 
-  // 🔥 Fetch incoming swap requests
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability
     fetchRequests()
@@ -22,7 +21,6 @@ export default function Swap() {
     }
   }
 
-  // 🔥 Send request
   const requestSwap = async () => {
     if (!usn) {
       setMessage('Enter USN')
@@ -41,14 +39,13 @@ export default function Swap() {
     }
   }
 
-  // 🔥 Respond to request
   const respond = async (id, action) => {
     try {
       await API.put(`/student/swap/${id}/respond`, { action })
       setMessage(`Request ${action}`)
       fetchRequests()
     } catch (err) {
-      setMessage('Error processing request' + err)
+      setMessage('Error processing request'+err)
     }
   }
 
@@ -99,11 +96,18 @@ export default function Swap() {
                 className="p-3 border rounded flex justify-between items-center"
               >
                 <span>
-                  {req.requester_usn} wants to swap
+                  {/* 🔥 SHOW NAME + USN */}
+                  <strong>
+                    {req.requester_name} ({req.requester_usn})
+                  </strong>
                   <br />
-                  Their Room: {req.requester_block}-{req.requester_room}
+
+                  Wants to swap rooms
                   <br />
-                  Your Room: {req.your_block}-{req.your_room}
+
+                  🏠 Their Room: {req.requester_block}-{req.requester_room}
+                  <br />
+                  🏠 Your Room: {req.your_block}-{req.your_room}
                 </span>
 
                 <div className="flex gap-2">
@@ -126,7 +130,6 @@ export default function Swap() {
           </div>
         </div>
 
-        {/* 🔵 MESSAGE */}
         {message && (
           <p className="text-sm text-blue-600 text-center">
             {message}
