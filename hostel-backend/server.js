@@ -14,7 +14,9 @@ const app = express();
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'hostel-allotment-6913ir8aj-veeresh-s-projects.vercel.app'
+    'https://hostel-allotment-6913ir8aj-veeresh-s-projects.vercel.app',
+    'https://hostel-allotment-q09o1tz31-veeresh-s-projects.vercel.app',
+    'https://hostel-allotment-sigma.vercel.app'
   ],
   credentials: true
 }));
