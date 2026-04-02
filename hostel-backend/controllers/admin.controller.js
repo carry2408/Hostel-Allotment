@@ -39,18 +39,26 @@ exports.addRoom = async (req, res) => {
   if (existing.length)
     return res.status(409).json({ message: 'Room exists' });
 
+  // ✅ FIX: set occupancy = 0 initially
   await pool.query(
-    'INSERT INTO rooms (block, room_number, type, fee, capacity) VALUES (?, ?, ?, ?, ?)',
-    [block, room_number, type, fee, capacity]
+    `INSERT INTO rooms 
+     (block, room_number, type, fee, capacity, current_occupancy) 
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [block, room_number, type, fee, capacity, 0]
   );
 
   res.json({ message: 'Room added' });
 };
 
 exports.getAllRooms = async (req, res) => {
+  // ✅ FIX: calculate availability dynamically
   const [rooms] = await pool.query(
-    'SELECT * FROM rooms ORDER BY block, room_number'
+    `SELECT *, 
+     (current_occupancy < capacity) AS is_available
+     FROM rooms 
+     ORDER BY block, room_number`
   );
+
   res.json(rooms);
 };
 
@@ -165,7 +173,6 @@ exports.closeRound2 = async (req, res) => {
 
 /* ================= YEAR CONTROL ================= */
 
-// 🔥 START NEW YEAR (ONLY IF PREVIOUS COMPLETED)
 exports.startNewYear = async (req, res) => {
   const { year } = req.body;
 
@@ -189,13 +196,11 @@ exports.startNewYear = async (req, res) => {
     "UPDATE system_settings SET setting_value='active' WHERE setting_key='year_status'"
   );
 
-  // reset rooms
   await pool.query(`UPDATE rooms SET current_occupancy = 0`);
 
   res.json({ message: `New year ${year} started` });
 };
 
-// 🔥 END FULL ALLOTMENT
 exports.endFullAllotment = async (req, res) => {
   try {
     const currentYear = await getCurrentYear();
@@ -284,19 +289,16 @@ exports.exportAndReset = async (req, res) => {
 
     const backup = {};
 
-    // 🔥 fetch all data
     for (const table of tables) {
       const [rows] = await pool.query(`SELECT * FROM ${table}`);
       backup[table] = rows;
     }
 
-    // 🔥 save JSON file
     const fileName = `backup_${Date.now()}.json`;
     const filePath = path.join(__dirname, '..', 'backups', fileName);
 
     fs.writeFileSync(filePath, JSON.stringify(backup, null, 2));
 
-    // 🔥 clear tables
     await pool.query('SET FOREIGN_KEY_CHECKS = 0');
 
     for (const table of tables.reverse()) {
