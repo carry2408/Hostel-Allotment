@@ -151,22 +151,22 @@ exports.submitPreferences = async (req, res) => {
 /* ================= ALLOTMENT ================= */
 
 exports.getAllotment = async (req, res) => {
-  const currentYear = await getCurrentYear();
-
-  const [rows] = await pool.query(
-    `SELECT a.*, s.name, r.block, r.room_number, r.type 
-     FROM allotments a 
-     JOIN rooms r ON a.room_id = r.id 
-     JOIN students s ON a.student_id = s.id
-     WHERE a.student_id=? AND a.year=?`,
-    [req.user.id, currentYear]
-  );
-
-  if (!rows.length)
-    return res.status(404).json({ message: 'No allotment' });
-
-  res.json(rows[0]);
-};
+  try {
+    const [rows] = await pool.query(
+      `SELECT a.id, a.round, a.allotted_at, a.is_on_hold,
+              r.block, r.room_number, r.type, r.fee
+       FROM allotments a
+       JOIN rooms r ON a.room_id = r.id
+       WHERE a.student_id = ?`,
+      [req.user.id]
+    )
+    if (rows.length === 0)
+      return res.status(404).json({ message: 'No allotment found' })
+    res.json(rows[0])
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message })
+  }
+}
 
 /* ================= ROOMS ================= */
 

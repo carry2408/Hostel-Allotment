@@ -23,6 +23,10 @@ export default function Dashboard() {
 
   const s = statusStyle[profile?.status] || statusStyle.pending
 
+  const formatFee = (fee) => {
+  const n = parseFloat(fee)
+  return isNaN(n) ? '—' : `₹${n.toLocaleString('en-IN')}`
+}
   const steps = [
     {
       label:    'Update Profile',
@@ -133,7 +137,7 @@ export default function Dashboard() {
                     {allotment.block}-{allotment.room_number}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {allotment.type} · ₹{Number(allotment.fee).toLocaleString()}
+                    {allotment.type} · {formatFee(allotment.fee)}
                   </p>
                 </div>
               </div>

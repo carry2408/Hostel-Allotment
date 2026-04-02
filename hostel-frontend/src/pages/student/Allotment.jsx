@@ -13,6 +13,11 @@ export default function Allotment() {
     setTimeout(() => setMessage({ text: '', type: '' }), 4000)
   }
 
+  const formatFee = (fee) => {
+  const n = parseFloat(fee)
+  return isNaN(n) ? '—' : `₹${n.toLocaleString('en-IN')}`
+}
+
   const fetchAllotment = async () => {
     try {
       const res = await API.get('/student/allotment')
@@ -161,7 +166,7 @@ export default function Allotment() {
           <div className="px-6 py-5 grid grid-cols-2 gap-4">
             {[
               { label: 'Room Type',   value: data.type.charAt(0).toUpperCase() + data.type.slice(1) },
-              { label: 'Fee',         value: `₹${Number(data.fee).toLocaleString()}` },
+              { label: 'Fee',         value: formatFee(data.fee) },
               { label: 'Round',       value: data.round === 'round1' ? 'Round 1' : 'Round 2' },
               { label: 'Allotted On', value: new Date(data.allotted_at).toLocaleDateString('en-IN', {
                   day: '2-digit', month: 'short', year: 'numeric'

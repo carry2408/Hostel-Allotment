@@ -18,6 +18,11 @@ export default function AllAllotments() {
     }
   }
 
+  const formatFee = (fee) => {
+  const n = parseFloat(fee)
+  return isNaN(n) ? '—' : `₹${n.toLocaleString('en-IN')}`
+}
+
   useEffect(() => {
     fetchAllotments()
     const interval = setInterval(fetchAllotments, 5000)
@@ -125,7 +130,7 @@ export default function AllAllotments() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-gray-600">
-                        ₹{Number(item.fee).toLocaleString()}
+                        {formatFee(item.fee)}
                       </td>
                       <td className="px-5 py-3">
                         <span className={`px-2.5 py-1 rounded-lg text-xs font-medium

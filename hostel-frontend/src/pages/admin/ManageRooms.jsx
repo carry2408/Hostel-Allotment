@@ -86,6 +86,11 @@ export default function ManageRooms() {
     double:    rooms.filter(r => r.type === 'double').length,
   }
 
+  const formatFee = (fee) => {
+  const n = parseFloat(fee)
+  return isNaN(n) ? '—' : `₹${n.toLocaleString('en-IN')}`
+}
+
   const inputClass = "w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition"
 
   return (
@@ -250,7 +255,7 @@ export default function ManageRooms() {
                           {room.block}-{room.room_number}
                         </p>
                         <p className="text-xs text-gray-400">
-                          {room.type} · ₹{Number(room.fee).toLocaleString()} · {room.current_occupancy}/{room.capacity} occupied
+                          {room.type} · {formatFee(room.fee)} · {room.current_occupancy}/{room.capacity} occupied
                         </p>
                       </div>
                     </div>
