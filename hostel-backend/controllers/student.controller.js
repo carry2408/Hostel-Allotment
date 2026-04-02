@@ -417,3 +417,29 @@ exports.respondSwap = async (req, res) => {
     conn.release();
   }
 };
+
+exports.confirmAllotment = async (req, res) => {
+  const student_id = req.user.id
+
+  try {
+    const [allotment] = await pool.query(
+      'SELECT id, is_on_hold FROM allotments WHERE student_id = ?',
+      [student_id]
+    )
+
+    if (allotment.length === 0)
+      return res.status(404).json({ message: 'No allotment found' })
+
+    if (!allotment[0].is_on_hold)
+      return res.status(400).json({ message: 'Your room is already confirmed' })
+
+    await pool.query(
+      'UPDATE allotments SET is_on_hold = false WHERE student_id = ?',
+      [student_id]
+    )
+
+    res.json({ message: 'Allotment confirmed successfully' })
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message })
+  }
+}
