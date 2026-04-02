@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// ✅ ADD THIS LINE (VERY IMPORTANT)
+require('./config/db');
+
 const authRoutes    = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
 const adminRoutes   = require('./routes/admin.routes');
@@ -9,9 +12,13 @@ const adminRoutes   = require('./routes/admin.routes');
 const app = express();
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'hostel-allotment-6913ir8aj-veeresh-s-projects.vercel.app'
+  ],
   credentials: true
 }));
+
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
