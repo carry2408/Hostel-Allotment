@@ -171,7 +171,11 @@ exports.getAllotment = async (req, res) => {
 /* ================= ROOMS ================= */
 
 exports.getAllRoomsForPreferences = async (req, res) => {
-  const [rooms] = await pool.query('SELECT * FROM rooms');
+  const [rooms] = await pool.query(
+    `SELECT *,
+     (current_occupancy < capacity) AS is_available
+     FROM rooms`
+  );
   res.json(rooms);
 };
 
@@ -223,7 +227,11 @@ exports.getSwapRequests = async (req, res) => {
 /* ================= ROOMS ================= */
 
 exports.getAllRoomsForPreferences = async (req, res) => {
-  const [rooms] = await pool.query('SELECT * FROM rooms');
+  const [rooms] = await pool.query(
+    `SELECT *,
+     (current_occupancy < capacity) AS is_available
+     FROM rooms`
+  );
   res.json(rooms);
 };
 
