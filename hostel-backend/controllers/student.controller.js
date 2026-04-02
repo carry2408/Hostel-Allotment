@@ -44,10 +44,7 @@ exports.updateProfile = async (req, res) => {
   if (locked.length && locked[0].is_locked)
     return res.status(403).json({ message: 'Application locked' });
 
-  const fields = doc_url
-    ? 'name=?, cgpa=?, doc_url=?'
-    : 'name=?, cgpa=?';
-
+  const fields = doc_url ? 'name=?, cgpa=?, doc_url=?' : 'name=?, cgpa=?';
   const values = doc_url
     ? [name, cgpa, doc_url, student_id]
     : [name, cgpa, student_id];
@@ -74,7 +71,6 @@ exports.getProfile = async (req, res) => {
 exports.submitPreferences = async (req, res) => {
   const { preferences } = req.body;
   const student_id = req.user.id;
-
   const currentYear = await getCurrentYear();
 
   if (!preferences || preferences.length === 0)
@@ -148,6 +144,41 @@ exports.submitPreferences = async (req, res) => {
   }
 };
 
+/* ================= ROOMS (🔥 FIXED) ================= */
+
+exports.getAllRoomsForPreferences = async (req, res) => {
+  try {
+    const [rooms] = await pool.query(
+      `SELECT *,
+       (current_occupancy < capacity) AS is_available
+       FROM rooms
+       ORDER BY block, room_number`
+    );
+
+    res.json(rooms);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch rooms' });
+  }
+};
+
+exports.getAvailableRooms = async (req, res) => {
+  const [settings] = await pool.query(
+    'SELECT setting_value FROM system_settings WHERE setting_key="round2_open"'
+  );
+
+  if (settings[0].setting_value !== 'true')
+    return res.status(403).json({ message: 'Round 2 closed' });
+
+  const [rooms] = await pool.query(
+    `SELECT * FROM rooms
+     WHERE current_occupancy < capacity
+     ORDER BY block, room_number`
+  );
+
+  res.json(rooms);
+};
+
 /* ================= ALLOTMENT ================= */
 
 exports.getAllotment = async (req, res) => {
@@ -168,134 +199,30 @@ exports.getAllotment = async (req, res) => {
   res.json(rows[0]);
 };
 
-/* ================= ROOMS ================= */
-
-exports.getAllRoomsForPreferences = async (req, res) => {
-  const [rooms] = await pool.query('SELECT * FROM rooms');
-  res.json(rooms);
-};
-
-exports.getAvailableRooms = async (req, res) => {
-  const [settings] = await pool.query(
-    'SELECT setting_value FROM system_settings WHERE setting_key="round2_open"'
-  );
-
-  if (settings[0].setting_value !== 'true')
-    return res.status(403).json({ message: 'Round 2 closed' });
-
-  const [rooms] = await pool.query(
-    'SELECT * FROM rooms WHERE current_occupancy < capacity'
-  );
-
-  res.json(rooms);
-};
-
-/* ================= SWAP ================= */
-
-exports.getSwapRequests = async (req, res) => {
-  const student_id = req.user.id;
-  const currentYear = await getCurrentYear();
-
-  const [rows] = await pool.query(
-    `SELECT 
-        sr.id,
-        s.name AS requester_name,
-        s.usn AS requester_usn,
-        r1.block AS requester_block,
-        r1.room_number AS requester_room,
-        r2.block AS your_block,
-        r2.room_number AS your_room
-     FROM swap_requests sr
-     JOIN students s ON sr.requester_id = s.id
-     JOIN rooms r1 ON sr.requester_room_id = r1.id
-     JOIN rooms r2 ON sr.target_room_id = r2.id
-     WHERE sr.target_id=? AND sr.status='pending' AND sr.year=?`,
-    [student_id, currentYear]
-  );
-
-  res.json(rows);
-};
-
-/* ================= CONFIRM ================= */
-
-
-
-/* ================= ROOMS ================= */
-
-exports.getAllRoomsForPreferences = async (req, res) => {
-  const [rooms] = await pool.query('SELECT * FROM rooms');
-  res.json(rooms);
-};
-
-/* ================= SWAP REQUESTS ================= */
-
-exports.getSwapRequests = async (req, res) => {
-  const student_id = req.user.id;
-  const currentYear = await getCurrentYear();
-
-  const [rows] = await pool.query(
-    `SELECT 
-        sr.id,
-        s.name AS requester_name,
-        s.usn AS requester_usn,
-        r1.block AS requester_block,
-        r1.room_number AS requester_room,
-        r2.block AS your_block,
-        r2.room_number AS your_room
-     FROM swap_requests sr
-     JOIN students s ON sr.requester_id = s.id
-     JOIN rooms r1 ON sr.requester_room_id = r1.id
-     JOIN rooms r2 ON sr.target_room_id = r2.id
-     WHERE sr.target_id=? AND sr.status='pending' AND sr.year=?`,
-    [student_id, currentYear]
-  );
-
-  res.json(rows);
-};
-
-/* ================= CONFIRM ================= */
-
-exports.confirmAllotment = async (req, res) => {
-  const student_id = req.user.id;
-
-  const [rows] = await pool.query(
-    'SELECT setting_value FROM system_settings WHERE setting_key="current_year"'
-  );
-
-  const currentYear = rows[0].setting_value;
-
-  await pool.query(
-    `UPDATE allotments 
-     SET is_on_hold=false 
-     WHERE student_id=? AND year=?`,
-    [student_id, currentYear]
-  );
-
-  res.json({ message: 'Allotment confirmed' });
-};
-
-/* ================= HOLD ================= */
+/* ================= HOLD / CONFIRM ================= */
 
 exports.holdRoom = async (req, res) => {
   const student_id = req.user.id;
   const currentYear = await getCurrentYear();
 
-  const [rows] = await pool.query(
-    'SELECT * FROM allotments WHERE student_id=? AND year=?',
-    [student_id, currentYear]
-  );
-
-  if (!rows.length)
-    return res.status(404).json({ message: 'No allotment found' });
-
   await pool.query(
-    `UPDATE allotments 
-     SET is_on_hold=true 
-     WHERE student_id=? AND year=?`,
+    `UPDATE allotments SET is_on_hold=true WHERE student_id=? AND year=?`,
     [student_id, currentYear]
   );
 
   res.json({ message: 'Room put on hold' });
+};
+
+exports.confirmAllotment = async (req, res) => {
+  const student_id = req.user.id;
+  const currentYear = await getCurrentYear();
+
+  await pool.query(
+    `UPDATE allotments SET is_on_hold=false WHERE student_id=? AND year=?`,
+    [student_id, currentYear]
+  );
+
+  res.json({ message: 'Allotment confirmed' });
 };
 
 /* ================= UPGRADE ================= */
@@ -308,14 +235,6 @@ exports.upgradeRoom = async (req, res) => {
   if (!room_id)
     return res.status(400).json({ message: 'Room ID required' });
 
-  const [rows] = await pool.query(
-    'SELECT * FROM allotments WHERE student_id=? AND year=?',
-    [student_id, currentYear]
-  );
-
-  if (!rows.length)
-    return res.status(404).json({ message: 'No allotment found' });
-
   await pool.query(
     `UPDATE allotments 
      SET room_id=?, round='round2', is_on_hold=true
@@ -326,23 +245,17 @@ exports.upgradeRoom = async (req, res) => {
   res.json({ message: 'Room upgraded' });
 };
 
-/* ================= REQUEST SWAP ================= */
+/* ================= SWAP ================= */
 
 exports.requestSwap = async (req, res) => {
   const { target_usn } = req.body;
   const requester_id = req.user.id;
   const currentYear = await getCurrentYear();
 
-  if (!target_usn)
-    return res.status(400).json({ message: 'Target USN required' });
-
   const [[target]] = await pool.query(
     'SELECT id FROM students WHERE usn=?',
     [target_usn]
   );
-
-  if (!target)
-    return res.status(404).json({ message: 'Target student not found' });
 
   const [[r1]] = await pool.query(
     'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
@@ -354,9 +267,6 @@ exports.requestSwap = async (req, res) => {
     [target.id, currentYear]
   );
 
-  if (!r1 || !r2)
-    return res.status(400).json({ message: 'Both students must have allotment' });
-
   await pool.query(
     `INSERT INTO swap_requests 
      (requester_id, target_id, requester_room_id, target_room_id, year)
@@ -367,23 +277,15 @@ exports.requestSwap = async (req, res) => {
   res.json({ message: 'Swap request sent' });
 };
 
-/* ================= RESPOND SWAP ================= */
-
 exports.respondSwap = async (req, res) => {
   const { action } = req.body;
   const id = req.params.id;
   const currentYear = await getCurrentYear();
 
-  if (!['accepted', 'rejected'].includes(action))
-    return res.status(400).json({ message: 'Invalid action' });
-
   const [[swap]] = await pool.query(
     'SELECT * FROM swap_requests WHERE id=? AND status="pending" AND year=?',
     [id, currentYear]
   );
-
-  if (!swap)
-    return res.status(404).json({ message: 'Request not found' });
 
   const conn = await pool.getConnection();
 
@@ -417,29 +319,3 @@ exports.respondSwap = async (req, res) => {
     conn.release();
   }
 };
-
-exports.confirmAllotment = async (req, res) => {
-  const student_id = req.user.id
-
-  try {
-    const [allotment] = await pool.query(
-      'SELECT id, is_on_hold FROM allotments WHERE student_id = ?',
-      [student_id]
-    )
-
-    if (allotment.length === 0)
-      return res.status(404).json({ message: 'No allotment found' })
-
-    if (!allotment[0].is_on_hold)
-      return res.status(400).json({ message: 'Your room is already confirmed' })
-
-    await pool.query(
-      'UPDATE allotments SET is_on_hold = false WHERE student_id = ?',
-      [student_id]
-    )
-
-    res.json({ message: 'Allotment confirmed successfully' })
-  } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message })
-  }
-}
