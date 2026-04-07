@@ -74,7 +74,6 @@ exports.getProfile = async (req, res) => {
 exports.submitPreferences = async (req, res) => {
   const { preferences } = req.body;
   const student_id = req.user.id;
-
   const currentYear = await getCurrentYear();
 
   if (!preferences || preferences.length === 0)
@@ -159,22 +158,22 @@ exports.getAllotment = async (req, res) => {
        JOIN rooms r ON a.room_id = r.id
        WHERE a.student_id = ?`,
       [req.user.id]
-    )
+    );
+
     if (rows.length === 0)
-      return res.status(404).json({ message: 'No allotment found' })
-    res.json(rows[0])
+      return res.status(404).json({ message: 'No allotment found' });
+
+    res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message })
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
-}
+};
 
 /* ================= ROOMS ================= */
 
 exports.getAllRoomsForPreferences = async (req, res) => {
   const [rooms] = await pool.query(
-    `SELECT *,
-     (current_occupancy < capacity) AS is_available
-     FROM rooms`
+    `SELECT *, (current_occupancy < capacity) AS is_available FROM rooms`
   );
   res.json(rooms);
 };
@@ -194,72 +193,179 @@ exports.getAvailableRooms = async (req, res) => {
   res.json(rooms);
 };
 
-/* ================= SWAP REQUESTS ================= */
+/* ================= SWAP ================= */
 
 exports.getSwapRequests = async (req, res) => {
   const student_id = req.user.id;
   const currentYear = await getCurrentYear();
 
-  const [incoming] = await pool.query(
-    `SELECT 
-        sr.id,
-        s.name AS requester_name,
-        s.usn AS requester_usn,
-        r1.block AS requester_block,
-        r1.room_number AS requester_room,
-        r2.block AS your_block,
-        r2.room_number AS your_room,
-        sr.status,
-        sr.created_at
-     FROM swap_requests sr
-     JOIN students s ON sr.requester_id = s.id
-     JOIN rooms r1 ON sr.requester_room_id = r1.id
-     JOIN rooms r2 ON sr.target_room_id = r2.id
-     WHERE sr.target_id=? AND sr.year=?`,
-    [student_id, currentYear]
-  );
+  try {
+    const [incoming] = await pool.query(
+      `SELECT 
+          sr.id,
+          s.name AS requester_name,
+          s.usn AS requester_usn,
+          r1.block AS their_block,
+          r1.room_number AS their_room,
+          r2.block AS your_block,
+          r2.room_number AS your_room,
+          sr.status,
+          sr.created_at
+       FROM swap_requests sr
+       JOIN students s ON sr.requester_id = s.id
+       JOIN rooms r1 ON sr.requester_room_id = r1.id
+       JOIN rooms r2 ON sr.target_room_id = r2.id
+       WHERE sr.target_id=? AND sr.year=?`,
+      [student_id, currentYear]
+    );
 
-  const [outgoing] = await pool.query(
-    `SELECT 
-        sr.id,
-        s.name AS target_name,
-        s.usn AS target_usn,
-        r1.block AS your_block,
-        r1.room_number AS your_room,
-        r2.block AS their_block,
-        r2.room_number AS their_room,
-        sr.status,
-        sr.created_at
-     FROM swap_requests sr
-     JOIN students s ON sr.target_id = s.id
-     JOIN rooms r1 ON sr.requester_room_id = r1.id
-     JOIN rooms r2 ON sr.target_room_id = r2.id
-     WHERE sr.requester_id=? AND sr.year=?`,
-    [student_id, currentYear]
-  );
+    const [outgoing] = await pool.query(
+      `SELECT 
+          sr.id,
+          s.name AS target_name,
+          s.usn AS target_usn,
+          r1.block AS your_block,
+          r1.room_number AS your_room,
+          r2.block AS their_block,
+          r2.room_number AS their_room,
+          sr.status,
+          sr.created_at
+       FROM swap_requests sr
+       JOIN students s ON sr.target_id = s.id
+       JOIN rooms r1 ON sr.requester_room_id = r1.id
+       JOIN rooms r2 ON sr.target_room_id = r2.id
+       WHERE sr.requester_id=? AND sr.year=?`,
+      [student_id, currentYear]
+    );
 
-  res.json({ incoming, outgoing });
+    res.json({ incoming, outgoing });
+
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
 };
 
-/* ================= CONFIRM ================= */
+exports.requestSwap = async (req, res) => {
+  const { target_usn } = req.body;
+  const requester_id = req.user.id;
+  const currentYear = await getCurrentYear();
 
-exports.confirmAllotment = async (req, res) => {
-  const student_id = req.user.id;
+  if (!target_usn)
+    return res.status(400).json({ message: 'Target USN required' });
 
-  const [rows] = await pool.query(
-    'SELECT setting_value FROM system_settings WHERE setting_key="current_year"'
-  );
+  try {
+    const [[target]] = await pool.query(
+      'SELECT id FROM students WHERE usn=?',
+      [target_usn]
+    );
 
-  const currentYear = rows[0].setting_value;
+    if (!target)
+      return res.status(404).json({ message: 'Target student not found' });
 
-  await pool.query(
-    `UPDATE allotments 
-     SET is_on_hold=false 
-     WHERE student_id=? AND year=?`,
-    [student_id, currentYear]
-  );
+    if (target.id === requester_id)
+      return res.status(400).json({ message: 'Cannot swap with yourself' });
 
-  res.json({ message: 'Allotment confirmed' });
+    const [[r1]] = await pool.query(
+      'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
+      [requester_id, currentYear]
+    );
+
+    const [[r2]] = await pool.query(
+      'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
+      [target.id, currentYear]
+    );
+
+    if (!r1 || !r2)
+      return res.status(400).json({ message: 'Both students must have allotment' });
+
+    const [existing] = await pool.query(
+      `SELECT * FROM swap_requests 
+       WHERE ((requester_id=? AND target_id=?) 
+          OR (requester_id=? AND target_id=?))
+       AND status='pending' AND year=?`,
+      [requester_id, target.id, target.id, requester_id, currentYear]
+    );
+
+    if (existing.length)
+      return res.status(400).json({ message: 'Swap request already exists' });
+
+    await pool.query(
+      `INSERT INTO swap_requests 
+       (requester_id, target_id, requester_room_id, target_room_id, year)
+       VALUES (?, ?, ?, ?, ?)`,
+      [requester_id, target.id, r1.room_id, r2.room_id, currentYear]
+    );
+
+    res.json({ message: 'Swap request sent' });
+
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+exports.respondSwap = async (req, res) => {
+  const { action } = req.body;
+  const id = req.params.id;
+  const currentYear = await getCurrentYear();
+
+  if (!['accepted', 'rejected'].includes(action))
+    return res.status(400).json({ message: 'Invalid action' });
+
+  try {
+    const [[swap]] = await pool.query(
+      'SELECT * FROM swap_requests WHERE id=? AND status="pending" AND year=?',
+      [id, currentYear]
+    );
+
+    if (!swap)
+      return res.status(404).json({ message: 'Request not found' });
+
+    if (swap.target_id !== req.user.id)
+      return res.status(403).json({ message: 'Not authorized' });
+
+    const conn = await pool.getConnection();
+
+    try {
+      await conn.beginTransaction();
+
+      if (action === 'accepted') {
+        await conn.query(
+          'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
+          [swap.target_room_id, swap.requester_id, currentYear]
+        );
+
+        await conn.query(
+          'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
+          [swap.requester_room_id, swap.target_id, currentYear]
+        );
+
+        await conn.query(
+          `UPDATE swap_requests 
+           SET status='cancelled' 
+           WHERE (requester_id=? OR target_id=?) 
+           AND id != ? AND status='pending'`,
+          [swap.requester_id, swap.target_id, id]
+        );
+      }
+
+      await conn.query(
+        'UPDATE swap_requests SET status=? WHERE id=?',
+        [action, id]
+      );
+
+      await conn.commit();
+      res.json({ message: `Swap ${action}` });
+
+    } catch (err) {
+      await conn.rollback();
+      res.status(500).json({ message: 'Swap failed', error: err.message });
+    } finally {
+      conn.release();
+    }
+
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
 };
 
 /* ================= HOLD ================= */
@@ -277,9 +383,7 @@ exports.holdRoom = async (req, res) => {
     return res.status(404).json({ message: 'No allotment found' });
 
   await pool.query(
-    `UPDATE allotments 
-     SET is_on_hold=true 
-     WHERE student_id=? AND year=?`,
+    `UPDATE allotments SET is_on_hold=true WHERE student_id=? AND year=?`,
     [student_id, currentYear]
   );
 
@@ -314,120 +418,31 @@ exports.upgradeRoom = async (req, res) => {
   res.json({ message: 'Room upgraded' });
 };
 
-/* ================= REQUEST SWAP ================= */
-
-exports.requestSwap = async (req, res) => {
-  const { target_usn } = req.body;
-  const requester_id = req.user.id;
-  const currentYear = await getCurrentYear();
-
-  if (!target_usn)
-    return res.status(400).json({ message: 'Target USN required' });
-
-  const [[target]] = await pool.query(
-    'SELECT id FROM students WHERE usn=?',
-    [target_usn]
-  );
-
-  if (!target)
-    return res.status(404).json({ message: 'Target student not found' });
-
-  const [[r1]] = await pool.query(
-    'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
-    [requester_id, currentYear]
-  );
-
-  const [[r2]] = await pool.query(
-    'SELECT room_id FROM allotments WHERE student_id=? AND year=?',
-    [target.id, currentYear]
-  );
-
-  if (!r1 || !r2)
-    return res.status(400).json({ message: 'Both students must have allotment' });
-
-  await pool.query(
-    `INSERT INTO swap_requests 
-     (requester_id, target_id, requester_room_id, target_room_id, year)
-     VALUES (?, ?, ?, ?, ?)`,
-    [requester_id, target.id, r1.room_id, r2.room_id, currentYear]
-  );
-
-  res.json({ message: 'Swap request sent' });
-};
-
-/* ================= RESPOND SWAP ================= */
-
-exports.respondSwap = async (req, res) => {
-  const { action } = req.body;
-  const id = req.params.id;
-  const currentYear = await getCurrentYear();
-
-  if (!['accepted', 'rejected'].includes(action))
-    return res.status(400).json({ message: 'Invalid action' });
-
-  const [[swap]] = await pool.query(
-    'SELECT * FROM swap_requests WHERE id=? AND status="pending" AND year=?',
-    [id, currentYear]
-  );
-
-  if (!swap)
-    return res.status(404).json({ message: 'Request not found' });
-
-  const conn = await pool.getConnection();
-
-  try {
-    await conn.beginTransaction();
-
-    if (action === 'accepted') {
-      await conn.query(
-        'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
-        [swap.target_room_id, swap.requester_id, currentYear]
-      );
-
-      await conn.query(
-        'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
-        [swap.requester_room_id, swap.target_id, currentYear]
-      );
-    }
-
-    await conn.query(
-      'UPDATE swap_requests SET status=? WHERE id=?',
-      [action, id]
-    );
-
-    await conn.commit();
-    res.json({ message: `Swap ${action}` });
-
-  } catch (err) {
-    await conn.rollback();
-    res.status(500).json({ message: 'Swap failed' });
-  } finally {
-    conn.release();
-  }
-};
+/* ================= CONFIRM ================= */
 
 exports.confirmAllotment = async (req, res) => {
-  const student_id = req.user.id
+  const student_id = req.user.id;
 
   try {
     const [allotment] = await pool.query(
       'SELECT id, is_on_hold FROM allotments WHERE student_id = ?',
       [student_id]
-    )
+    );
 
     if (allotment.length === 0)
-      return res.status(404).json({ message: 'No allotment found' })
+      return res.status(404).json({ message: 'No allotment found' });
 
     if (!allotment[0].is_on_hold)
-      return res.status(400).json({ message: 'Your room is already confirmed' })
+      return res.status(400).json({ message: 'Already confirmed' });
 
     await pool.query(
       'UPDATE allotments SET is_on_hold = false WHERE student_id = ?',
       [student_id]
-    )
+    );
 
-    res.json({ message: 'Allotment confirmed successfully' })
+    res.json({ message: 'Allotment confirmed successfully' });
+
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message })
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
-}
+};
