@@ -311,60 +311,106 @@ exports.respondSwap = async (req, res) => {
   if (!['accepted', 'rejected'].includes(action))
     return res.status(400).json({ message: 'Invalid action' });
 
+  const conn = await pool.getConnection();
+
   try {
-    const [[swap]] = await pool.query(
-      'SELECT * FROM swap_requests WHERE id=? AND status="pending" AND year=?',
+    await conn.beginTransaction();
+
+    // 🔒 Lock swap row
+    const [[swap]] = await conn.query(
+      `SELECT * FROM swap_requests 
+       WHERE id=? AND status='pending' AND year=? 
+       FOR UPDATE`,
       [id, currentYear]
     );
 
-    if (!swap)
-      return res.status(404).json({ message: 'Request not found' });
-
-    if (swap.target_id !== req.user.id)
-      return res.status(403).json({ message: 'Not authorized' });
-
-    const conn = await pool.getConnection();
-
-    try {
-      await conn.beginTransaction();
-
-      if (action === 'accepted') {
-        await conn.query(
-          'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
-          [swap.target_room_id, swap.requester_id, currentYear]
-        );
-
-        await conn.query(
-          'UPDATE allotments SET room_id=? WHERE student_id=? AND year=?',
-          [swap.requester_room_id, swap.target_id, currentYear]
-        );
-
-        await conn.query(
-          `UPDATE swap_requests 
-           SET status='cancelled' 
-           WHERE (requester_id=? OR target_id=?) 
-           AND id != ? AND status='pending'`,
-          [swap.requester_id, swap.target_id, id]
-        );
-      }
-
-      await conn.query(
-        'UPDATE swap_requests SET status=? WHERE id=?',
-        [action, id]
-      );
-
-      await conn.commit();
-      res.json({ message: `Swap ${action}` });
-
-    } catch (err) {
+    if (!swap) {
       await conn.rollback();
-      res.status(500).json({ message: 'Swap failed', error: err.message });
-    } finally {
-      conn.release();
+      return res.status(404).json({ message: 'Request not found' });
     }
 
+    if (swap.target_id !== req.user.id) {
+      await conn.rollback();
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    if (action === 'accepted') {
+      // 🔒 Lock both students' allotments
+      const [[reqAllot]] = await conn.query(
+        `SELECT room_id FROM allotments 
+         WHERE student_id=? AND year=? 
+         FOR UPDATE`,
+        [swap.requester_id, currentYear]
+      );
+
+      const [[targetAllot]] = await conn.query(
+        `SELECT room_id FROM allotments 
+         WHERE student_id=? AND year=? 
+         FOR UPDATE`,
+        [swap.target_id, currentYear]
+      );
+
+      if (!reqAllot || !targetAllot) {
+        throw new Error('Both students must have valid allotments');
+      }
+
+      const requesterRoom = reqAllot.room_id;
+      const targetRoom    = targetAllot.room_id;
+
+      // 🔒 Lock both rooms
+      await conn.query(
+        `SELECT id FROM rooms WHERE id IN (?, ?) FOR UPDATE`,
+        [requesterRoom, targetRoom]
+      );
+
+      // ✅ Swap rooms
+      await conn.query(
+        `UPDATE allotments SET room_id=? 
+         WHERE student_id=? AND year=?`,
+        [targetRoom, swap.requester_id, currentYear]
+      );
+
+      await conn.query(
+        `UPDATE allotments SET room_id=? 
+         WHERE student_id=? AND year=?`,
+        [requesterRoom, swap.target_id, currentYear]
+      );
+
+      // ❗ No occupancy change needed because it's a swap (1:1 exchange)
+
+      // ❌ Cancel all other pending swaps for both users
+      await conn.query(
+        `UPDATE swap_requests 
+         SET status='cancelled' 
+         WHERE (requester_id IN (?, ?) OR target_id IN (?, ?))
+         AND id != ? AND status='pending' AND year=?`,
+        [
+          swap.requester_id,
+          swap.target_id,
+          swap.requester_id,
+          swap.target_id,
+          id,
+          currentYear
+        ]
+      );
+    }
+
+    // ✅ Update current request status
+    await conn.query(
+      `UPDATE swap_requests SET status=? WHERE id=?`,
+      [action, id]
+    );
+
+    await conn.commit();
+
+    res.json({ message: `Swap ${action}` });
+
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    await conn.rollback();
+    console.error(err);
+    res.status(500).json({ message: 'Swap failed', error: err.message });
+  } finally {
+    conn.release();
   }
 };
 
