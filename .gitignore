@@ -3,3 +3,4 @@ node_modules/
 dist/
 build/
 .vite/
+dummy_data_for_testing.txt

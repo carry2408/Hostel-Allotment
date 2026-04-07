@@ -194,54 +194,13 @@ exports.getAvailableRooms = async (req, res) => {
   res.json(rooms);
 };
 
-/* ================= SWAP ================= */
-
-exports.getSwapRequests = async (req, res) => {
-  const student_id = req.user.id;
-  const currentYear = await getCurrentYear();
-
-  const [rows] = await pool.query(
-    `SELECT 
-        sr.id,
-        s.name AS requester_name,
-        s.usn AS requester_usn,
-        r1.block AS requester_block,
-        r1.room_number AS requester_room,
-        r2.block AS your_block,
-        r2.room_number AS your_room
-     FROM swap_requests sr
-     JOIN students s ON sr.requester_id = s.id
-     JOIN rooms r1 ON sr.requester_room_id = r1.id
-     JOIN rooms r2 ON sr.target_room_id = r2.id
-     WHERE sr.target_id=? AND sr.status='pending' AND sr.year=?`,
-    [student_id, currentYear]
-  );
-
-  res.json(rows);
-};
-
-/* ================= CONFIRM ================= */
-
-
-
-/* ================= ROOMS ================= */
-
-exports.getAllRoomsForPreferences = async (req, res) => {
-  const [rooms] = await pool.query(
-    `SELECT *,
-     (current_occupancy < capacity) AS is_available
-     FROM rooms`
-  );
-  res.json(rooms);
-};
-
 /* ================= SWAP REQUESTS ================= */
 
 exports.getSwapRequests = async (req, res) => {
   const student_id = req.user.id;
   const currentYear = await getCurrentYear();
 
-  const [rows] = await pool.query(
+  const [incoming] = await pool.query(
     `SELECT 
         sr.id,
         s.name AS requester_name,
@@ -249,16 +208,37 @@ exports.getSwapRequests = async (req, res) => {
         r1.block AS requester_block,
         r1.room_number AS requester_room,
         r2.block AS your_block,
-        r2.room_number AS your_room
+        r2.room_number AS your_room,
+        sr.status,
+        sr.created_at
      FROM swap_requests sr
      JOIN students s ON sr.requester_id = s.id
      JOIN rooms r1 ON sr.requester_room_id = r1.id
      JOIN rooms r2 ON sr.target_room_id = r2.id
-     WHERE sr.target_id=? AND sr.status='pending' AND sr.year=?`,
+     WHERE sr.target_id=? AND sr.year=?`,
     [student_id, currentYear]
   );
 
-  res.json(rows);
+  const [outgoing] = await pool.query(
+    `SELECT 
+        sr.id,
+        s.name AS target_name,
+        s.usn AS target_usn,
+        r1.block AS your_block,
+        r1.room_number AS your_room,
+        r2.block AS their_block,
+        r2.room_number AS their_room,
+        sr.status,
+        sr.created_at
+     FROM swap_requests sr
+     JOIN students s ON sr.target_id = s.id
+     JOIN rooms r1 ON sr.requester_room_id = r1.id
+     JOIN rooms r2 ON sr.target_room_id = r2.id
+     WHERE sr.requester_id=? AND sr.year=?`,
+    [student_id, currentYear]
+  );
+
+  res.json({ incoming, outgoing });
 };
 
 /* ================= CONFIRM ================= */

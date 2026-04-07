@@ -47,7 +47,7 @@ export default function Swap() {
     setResponding(r => ({ ...r, [id]: action }))
     try {
       await API.put(`/student/swap/${id}/respond`, { action })
-      showMessage(`Request ${action === 'accepted' ? 'accepted' : 'rejected'} successfully.`,
+      showMessage(`Request ${action === 'accepted' ? 'accepted successfully' : 'rejected'}.`,
         action === 'accepted' ? 'success' : 'error')
       fetchRequests()
     } catch (err) {
