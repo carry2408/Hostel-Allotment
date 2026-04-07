@@ -215,7 +215,7 @@ exports.getSwapRequests = async (req, res) => {
        JOIN students s ON sr.requester_id = s.id
        JOIN rooms r1 ON sr.requester_room_id = r1.id
        JOIN rooms r2 ON sr.target_room_id = r2.id
-       WHERE sr.target_id=? AND sr.year=?`,
+       WHERE sr.target_id=? AND sr.year=? AND sr.status='pending'`,
       [student_id, currentYear]
     );
 
@@ -234,7 +234,7 @@ exports.getSwapRequests = async (req, res) => {
        JOIN students s ON sr.target_id = s.id
        JOIN rooms r1 ON sr.requester_room_id = r1.id
        JOIN rooms r2 ON sr.target_room_id = r2.id
-       WHERE sr.requester_id=? AND sr.year=?`,
+       WHERE sr.requester_id=? AND sr.year=? AND sr.status='pending'`,
       [student_id, currentYear]
     );
 
