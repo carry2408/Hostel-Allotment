@@ -120,7 +120,8 @@ export default function Allotment() {
     G: 'bg-amber-100 text-amber-600',
   }
 
-  const isConfirmed = !data.is_on_hold && data.round === 'round2'
+  const canUseRound2 = data.round2_open || data.is_on_hold
+  const isConfirmed = !data.is_on_hold && (!data.round2_open || data.round === 'round2')
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -204,7 +205,19 @@ export default function Allotment() {
             </div>
             <div>
               <p className="font-semibold text-green-700 text-sm">Allotment Confirmed</p>
-              <p className="text-xs text-green-600 mt-0.5">Your room is locked in. No further changes allowed.</p>
+              <p className="text-xs text-green-600 mt-0.5">Your room is locked in for the current state of the allotment.</p>
+            </div>
+          </div>
+        ) : !canUseRound2 ? (
+          <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 flex items-center gap-4">
+            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-semibold text-blue-700 text-sm">Round 2 Not Open</p>
+              <p className="text-xs text-blue-600 mt-0.5">Your current allotment is visible here. Upgrade options will appear only when the admin opens round 2.</p>
             </div>
           </div>
         ) : (

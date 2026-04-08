@@ -11,13 +11,23 @@ const adminRoutes   = require('./routes/admin.routes');
 
 const app = express();
 
+const allowedOrigins = new Set([
+  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean));
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://hostel-allotment-6913ir8aj-veeresh-s-projects.vercel.app',
-    'https://hostel-allotment-q09o1tz31-veeresh-s-projects.vercel.app',
-    'https://hostel-allotment-sigma.vercel.app'
-  ],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+
+    const isAllowed =
+      allowedOrigins.has(origin) ||
+      /^https:\/\/hostel-allotment.*\.vercel\.app$/.test(origin);
+
+    if (isAllowed) return callback(null, true);
+
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 

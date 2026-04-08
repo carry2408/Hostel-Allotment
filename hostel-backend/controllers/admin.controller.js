@@ -85,7 +85,7 @@ exports.deleteRoom = async (req, res) => {
 
 exports.getAllStudents = async (req, res) => {
   const [students] = await pool.query(
-    'SELECT id, name, usn, email, cgpa, status FROM students ORDER BY cgpa DESC'
+    'SELECT id, name, usn, email, cgpa, status, created_at FROM students ORDER BY cgpa DESC'
   );
   res.json(students);
 };
@@ -97,8 +97,8 @@ exports.getAllAllotments = async (req, res) => {
 
   const [data] = await pool.query(
     `SELECT a.id, a.round, a.allotted_at, a.is_on_hold,
-            s.name, s.usn, s.cgpa,
-            r.block, r.room_number, r.type
+            s.name, s.usn, s.email, s.cgpa,
+            r.block, r.room_number, r.type, r.fee
      FROM allotments a
      JOIN students s ON a.student_id = s.id
      JOIN rooms r ON a.room_id = r.id
@@ -277,8 +277,10 @@ const fs = require('fs');
 const path = require('path');
 
 exports.exportAndReset = async (req, res) => {
+  const conn = await pool.getConnection();
+
   try {
-    const tables = [
+    const backupTables = [
       'students',
       'rooms',
       'applications',
@@ -289,8 +291,8 @@ exports.exportAndReset = async (req, res) => {
 
     const backup = {};
 
-    for (const table of tables) {
-      const [rows] = await pool.query(`SELECT * FROM ${table}`);
+    for (const table of backupTables) {
+      const [rows] = await conn.query(`SELECT * FROM ${table}`);
       backup[table] = rows;
     }
 
@@ -299,13 +301,23 @@ exports.exportAndReset = async (req, res) => {
 
     fs.writeFileSync(filePath, JSON.stringify(backup, null, 2));
 
-    await pool.query('SET FOREIGN_KEY_CHECKS = 0');
+    await conn.beginTransaction();
 
-    for (const table of tables.reverse()) {
-      await pool.query(`TRUNCATE TABLE ${table}`);
+    const resetOrder = [
+      'swap_requests',
+      'preferences',
+      'allotments',
+      'applications',
+      'rooms',
+      'students'
+    ];
+
+    for (const table of resetOrder) {
+      await conn.query(`DELETE FROM ${table}`);
+      await conn.query(`ALTER TABLE ${table} AUTO_INCREMENT = 1`);
     }
 
-    await pool.query('SET FOREIGN_KEY_CHECKS = 1');
+    await conn.commit();
 
     res.json({
       message: 'Backup created & system reset',
@@ -313,7 +325,10 @@ exports.exportAndReset = async (req, res) => {
     });
 
   } catch (err) {
+    await conn.rollback();
     console.error(err);
     res.status(500).json({ message: 'Error exporting data' });
+  } finally {
+    conn.release();
   }
 };

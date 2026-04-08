@@ -122,6 +122,11 @@ export default function AdminDashboard() {
     gray:  'bg-gray-600 hover:bg-gray-700',
   }
 
+  const iconColor = {
+    blue: 'text-blue-500',
+    purple: 'text-purple-500',
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -163,7 +168,7 @@ export default function AdminDashboard() {
         {controls.map(ctrl => (
           <div key={ctrl.section} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-center gap-3 mb-1">
-              <div className={`text-${ctrl.color}-500`}>{ctrl.icon}</div>
+              <div className={iconColor[ctrl.color] || 'text-gray-500'}>{ctrl.icon}</div>
               <h3 className="font-semibold text-gray-800">{ctrl.section}</h3>
             </div>
             <p className="text-sm text-gray-400 mb-5">{ctrl.description}</p>

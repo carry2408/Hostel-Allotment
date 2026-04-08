@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Navbar from '../../components/Navbar'
-import API from '../../api/axios'
+import API, { API_BASE_URL } from '../../api/axios'
 
 export default function Profile() {
   const [name, setName]       = useState('')
@@ -106,7 +106,7 @@ export default function Profile() {
             </div>
             {existing.doc_url && (
               <a
-                href={`http://localhost:5000${existing.doc_url}`}
+                href={`${API_BASE_URL}${existing.doc_url}`}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 inline-flex items-center gap-1.5 text-xs text-blue-600 hover:underline font-medium"

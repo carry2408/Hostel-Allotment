@@ -151,19 +151,26 @@ exports.submitPreferences = async (req, res) => {
 
 exports.getAllotment = async (req, res) => {
   try {
+    const currentYear = await getCurrentYear();
+    const [settings] = await pool.query(
+      'SELECT setting_value FROM system_settings WHERE setting_key="round2_open"'
+    );
     const [rows] = await pool.query(
       `SELECT a.id, a.round, a.allotted_at, a.is_on_hold,
               r.block, r.room_number, r.type, r.fee
        FROM allotments a
        JOIN rooms r ON a.room_id = r.id
-       WHERE a.student_id = ?`,
-      [req.user.id]
+       WHERE a.student_id = ? AND a.year = ?`,
+      [req.user.id, currentYear]
     );
 
     if (rows.length === 0)
       return res.status(404).json({ message: 'No allotment found' });
 
-    res.json(rows[0]);
+    res.json({
+      ...rows[0],
+      round2_open: settings[0]?.setting_value === 'true',
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
@@ -419,6 +426,12 @@ exports.respondSwap = async (req, res) => {
 exports.holdRoom = async (req, res) => {
   const student_id = req.user.id;
   const currentYear = await getCurrentYear();
+  const [settings] = await pool.query(
+    'SELECT setting_value FROM system_settings WHERE setting_key="round2_open"'
+  );
+
+  if (settings[0]?.setting_value !== 'true')
+    return res.status(403).json({ message: 'Round 2 closed' });
 
   const [rows] = await pool.query(
     'SELECT * FROM allotments WHERE student_id=? AND year=?',
@@ -442,37 +455,104 @@ exports.upgradeRoom = async (req, res) => {
   const { room_id } = req.body;
   const student_id = req.user.id;
   const currentYear = await getCurrentYear();
+  const conn = await pool.getConnection();
 
   if (!room_id)
     return res.status(400).json({ message: 'Room ID required' });
 
-  const [rows] = await pool.query(
-    'SELECT * FROM allotments WHERE student_id=? AND year=?',
-    [student_id, currentYear]
-  );
+  try {
+    const [settings] = await conn.query(
+      'SELECT setting_value FROM system_settings WHERE setting_key="round2_open"'
+    );
 
-  if (!rows.length)
-    return res.status(404).json({ message: 'No allotment found' });
+    if (settings[0]?.setting_value !== 'true')
+      return res.status(403).json({ message: 'Round 2 closed' });
 
-  await pool.query(
-    `UPDATE allotments 
-     SET room_id=?, round='round2', is_on_hold=true
-     WHERE student_id=? AND year=?`,
-    [room_id, student_id, currentYear]
-  );
+    await conn.beginTransaction();
 
-  res.json({ message: 'Room upgraded' });
+    const [[allotment]] = await conn.query(
+      `SELECT room_id, is_on_hold
+       FROM allotments
+       WHERE student_id=? AND year=?
+       FOR UPDATE`,
+      [student_id, currentYear]
+    );
+
+    if (!allotment) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'No allotment found' });
+    }
+
+    if (!allotment.is_on_hold) {
+      await conn.rollback();
+      return res.status(400).json({ message: 'Put your current room on hold first' });
+    }
+
+    if (Number(allotment.room_id) === Number(room_id)) {
+      await conn.rollback();
+      return res.status(400).json({ message: 'You already have this room' });
+    }
+
+    const [[newRoom]] = await conn.query(
+      `SELECT id, capacity, current_occupancy
+       FROM rooms
+       WHERE id=?
+       FOR UPDATE`,
+      [room_id]
+    );
+
+    if (!newRoom) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Target room not found' });
+    }
+
+    if (newRoom.current_occupancy >= newRoom.capacity) {
+      await conn.rollback();
+      return res.status(400).json({ message: 'Target room is full' });
+    }
+
+    await conn.query(
+      'SELECT id FROM rooms WHERE id=? FOR UPDATE',
+      [allotment.room_id]
+    );
+
+    await conn.query(
+      `UPDATE allotments
+       SET room_id=?, round='round2', is_on_hold=true
+       WHERE student_id=? AND year=?`,
+      [room_id, student_id, currentYear]
+    );
+
+    await conn.query(
+      'UPDATE rooms SET current_occupancy = current_occupancy - 1 WHERE id=?',
+      [allotment.room_id]
+    );
+
+    await conn.query(
+      'UPDATE rooms SET current_occupancy = current_occupancy + 1 WHERE id=?',
+      [room_id]
+    );
+
+    await conn.commit();
+    res.json({ message: 'Room upgraded' });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ message: 'Server error', error: err.message });
+  } finally {
+    conn.release();
+  }
 };
 
 /* ================= CONFIRM ================= */
 
 exports.confirmAllotment = async (req, res) => {
   const student_id = req.user.id;
+  const currentYear = await getCurrentYear();
 
   try {
     const [allotment] = await pool.query(
-      'SELECT id, is_on_hold FROM allotments WHERE student_id = ?',
-      [student_id]
+      'SELECT id, is_on_hold FROM allotments WHERE student_id = ? AND year = ?',
+      [student_id, currentYear]
     );
 
     if (allotment.length === 0)
@@ -482,8 +562,8 @@ exports.confirmAllotment = async (req, res) => {
       return res.status(400).json({ message: 'Already confirmed' });
 
     await pool.query(
-      'UPDATE allotments SET is_on_hold = false WHERE student_id = ?',
-      [student_id]
+      'UPDATE allotments SET is_on_hold = false WHERE student_id = ? AND year = ?',
+      [student_id, currentYear]
     );
 
     res.json({ message: 'Allotment confirmed successfully' });
