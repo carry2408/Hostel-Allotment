@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'https://hostel-allotment-ynbv.onrender.com/api',
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
 export const API_BASE_URL = API.defaults.baseURL.replace(/\/api$/, '');
